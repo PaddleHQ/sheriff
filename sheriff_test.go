@@ -2,6 +2,7 @@ package sheriff
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"reflect"
 	"testing"
@@ -583,16 +584,48 @@ type TestMarshal_NamedEmbedded struct {
 	Qux string `json:"qux" groups:"test"`
 }
 
+// TestMarshal_EmbeddedCustom is used to test an embedded struct with a custom marshaler that is not a pointer.
+type TestMarshal_EmbeddedCustom struct {
+	Val int
+	Set bool
+}
+
+func (t TestMarshal_EmbeddedCustom) MarshalJSON() ([]byte, error) {
+	if t.Set {
+		return []byte(fmt.Sprintf("%d", t.Val)), nil
+	}
+
+	return nil, nil
+}
+
+// TestMarshal_EmbeddedCustomPtr is used to test an embedded struct with a custom marshaler that is a pointer.
+type TestMarshal_EmbeddedCustomPtr struct {
+	Val int
+	Set bool
+}
+
+func (t *TestMarshal_EmbeddedCustomPtr) MarshalJSON() ([]byte, error) {
+	if t.Set {
+		return []byte(fmt.Sprintf("%d", t.Val)), nil
+	}
+
+	return nil, nil
+}
+
 type TestMarshal_EmbeddedParent struct {
 	*TestMarshal_Embedded
-	*TestMarshal_NamedEmbedded `json:"embedded"`
-	Bar                        string `json:"bar" groups:"test"`
+	*TestMarshal_NamedEmbedded     `json:"embedded"`
+	*TestMarshal_EmbeddedCustom    `json:"value"`
+	*TestMarshal_EmbeddedCustomPtr `json:"value_ptr"`
+	Bar                            string `json:"bar" groups:"test"`
 }
 
 func TestMarshal_EmbeddedField(t *testing.T) {
 	v := TestMarshal_EmbeddedParent{
 		&TestMarshal_Embedded{"Hello"},
 		&TestMarshal_NamedEmbedded{"Big"},
+		&TestMarshal_EmbeddedCustom{10, true},
+		&TestMarshal_EmbeddedCustomPtr{20, true},
 		"World",
 	}
 	o := &Options{Groups: []string{"test"}}
@@ -606,7 +639,6 @@ func TestMarshal_EmbeddedField(t *testing.T) {
 	t.Run("should match the original json marshal", func(t *testing.T) {
 		expected, err := json.Marshal(v)
 		assert.NoError(t, err)
-
 		assert.JSONEq(t, string(expected), string(actual))
 	})
 
@@ -617,6 +649,8 @@ func TestMarshal_EmbeddedField(t *testing.T) {
 			"embedded": map[string]interface{}{
 				"qux": "Big",
 			},
+			"value":     10,
+			"value_ptr": 20,
 		})
 		assert.NoError(t, err)
 		assert.JSONEq(t, string(expectedMap), string(actual))
